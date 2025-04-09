@@ -87,8 +87,21 @@ public class SwarmAgent : MonoBehaviour
 
         CheckPlayerDetection();
         UpdateRotation();
-        UpdateFear();
 
+        // Process fear updates first to ensure immediate state transitions
+        switch (_currentState)
+        {
+            case AgentState.Chasing:
+            case AgentState.Shooting:
+            case AgentState.Hiding:
+                UpdateFearFromDistance();
+                break;
+        }
+
+        UpdateFearReduction();
+        CheckFearThreshold(); // New method to handle fleeing
+
+        // State updates
         switch (_currentState)
         {
             case AgentState.Patrolling:
@@ -236,11 +249,8 @@ public class SwarmAgent : MonoBehaviour
 
     private void Fire()
     {
-        if (_fireCooldown <= 0)
-        {
-            Debug.Log($"{name} firing at player!");
-            _fireCooldown = 3f;
-        }
+        // Debug.Log($"{name} firing at player!");
+        transform.GetChild(0).GetComponent<WeaponSystem>().weapons[transform.GetChild(0).GetComponent<WeaponSystem>().weaponIndex].GetComponent<Weapon>().RemoteFire();
     }
 
     private void UpdateHidingState()
@@ -250,11 +260,6 @@ public class SwarmAgent : MonoBehaviour
             currentFear = 0;
             EnterState(AgentState.Patrolling);
         }
-    }
-
-    private void UpdateFear()
-    {
-        currentFear = Mathf.Max(0, currentFear - fearReductionRate * Time.fixedDeltaTime);
     }
 
     private void CheckPlayerDetection()
@@ -322,10 +327,37 @@ public class SwarmAgent : MonoBehaviour
 
             case AgentState.Dead:
                 _agent.isStopped = true;
-                _rb.constraints = RigidbodyConstraints.None;
                 transform.Rotate(90, 0, 0);
                 enabled = false;
                 break;
+        }
+    }
+
+    private void UpdateFearFromDistance()
+    {
+        if (SwarmIntelligence.Instance.playerTransform == null) return;
+
+        float distanceToPlayer = Vector3.Distance(transform.position,
+            SwarmIntelligence.Instance.playerTransform.position);
+        float normalizedDistance = Mathf.Clamp01(distanceToPlayer / detectionRadius);
+        float distanceFear = fearDistanceWeight * (1 - normalizedDistance);
+
+        // Apply fear with max cap of maxFear * 1.2
+        currentFear = Mathf.Min(currentFear + distanceFear * Time.fixedDeltaTime, maxFear * 1.2f);
+    }
+
+    private void UpdateFearReduction()
+    {
+        currentFear = Mathf.Max(0, currentFear - fearReductionRate * Time.fixedDeltaTime);
+    }
+
+    private void CheckFearThreshold()
+    {
+        if (currentFear >= maxFear && _currentState != AgentState.Hiding)
+        {
+            // Only trigger hiding if we're not already hiding
+            EnterState(AgentState.Hiding);
+            Debug.Log($"{name} is fleeing due to fear! Fear level: {currentFear}");
         }
     }
 
@@ -333,21 +365,13 @@ public class SwarmAgent : MonoBehaviour
     {
         if (_currentState == AgentState.Dead) return;
 
-        float distanceToPlayer = SwarmIntelligence.Instance.playerTransform ?
-            Vector3.Distance(transform.position, SwarmIntelligence.Instance.playerTransform.position) : 0;
-
-        float normalizedDistance = Mathf.Clamp01(distanceToPlayer / detectionRadius);
-        float distanceFear = fearDistanceWeight * (1 - normalizedDistance);
         float damageFear = fearDamageWeight * damage;
+        currentFear = Mathf.Min(currentFear + damageFear, maxFear * 1.2f);
 
-        currentFear += distanceFear + damageFear;
+        Debug.Log($"{name} took {damage} damage. Current fear: {currentFear}");
 
-        if (currentFear >= maxFear)
-        {
-            EnterState(AgentState.Hiding);
-        }
-
-        Debug.Log($"{name} Damage Received!");
+        // Immediate check for fleeing after damage
+        CheckFearThreshold();
     }
 
     public void Die()

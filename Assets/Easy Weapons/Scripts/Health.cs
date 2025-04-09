@@ -8,7 +8,9 @@ public class Health : MonoBehaviour
     public GameObject explosion;                // The explosion prefab to be instantiated
 
     public bool isPlayer = false;               // Whether or not this health is the player
+    public bool isChild = false;
     public GameObject deathCam;					// The camera to activate when the player dies
+    public GameObject canvas;					// The camera to activate when the player dies
 
     private void Start()
     {
@@ -40,10 +42,21 @@ public class Health : MonoBehaviour
 
     public void Die()
     {
-        if (isPlayer && deathCam != null)
+        if (isChild && deathCam != null)
             deathCam.SetActive(true);
 
-        GetComponent<MeshRenderer>().enabled = false;
+        if(!isChild)
+        {
+            GetComponent<MeshRenderer>().enabled = false;
+            transform.GetChild(0).gameObject.SetActive(false);
+        }
+        
+        if(isPlayer)
+        {
+            Destroy(gameObject);
+            Destroy(canvas);
+        }
+
         Instantiate(explosion, transform.position, transform.rotation);
 
         SwarmAgent agent = GetComponent<SwarmAgent>();
@@ -51,7 +64,7 @@ public class Health : MonoBehaviour
         {
             agent.Die();
         }
-        else if (!isPlayer)
+        else if (isChild)
         {
             Destroy(gameObject);
         }
