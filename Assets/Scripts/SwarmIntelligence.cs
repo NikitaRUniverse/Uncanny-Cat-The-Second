@@ -2,50 +2,21 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
-public enum AgentRole { Scout, Defender, Worker }
-public enum SpawnFormation { Circle, Grid, Line, Random}
-
-[System.Serializable]
-public class AgentConfiguration
-{
-    [Header("Role Identity")]
-    public AgentRole role;
-    public Color debugColor = Color.white;
-
-    [Header("Movement Settings")]
-    [Range(1f, 10f)] public float speed = 3.5f;
-    [Range(0.1f, 5f)] public float stoppingDistance = 0.5f;
-    [Range(0f, 1f)] public float angularSpeed = 120f;
-
-    [Header("Patrol Behavior")]
-    [Tooltip("Maximum distance from spawn this agent will patrol")]
-    public float patrolRadius = 10f;
-
-    [Tooltip("Chance to ignore role behavior and pick randomly")]
-    [Range(0f, 1f)] public float randomnessFactor = 0.2f;
-
-    [Tooltip("Seconds to wait at each point")]
-    [Range(0f, 10f)] public float waitTimeAtPoint = 1f;
-
-    [Tooltip("Should avoid points recently visited by others?")]
-    public bool avoidRecentlyVisited = true;
-
-    [Tooltip("How important visit recency is vs distance (0-1)")]
-    [Range(0f, 1f)] public float visitRecencyWeight = 0.7f;
-}
+public enum SpawnFormation { Circle, Grid, Line, Random }
 
 public class SwarmIntelligence : MonoBehaviour
 {
     public static SwarmIntelligence Instance;
+    public Transform playerTransform;
 
-    [Header("Agent Settings")]
-    public GameObject agentPrefab;
-    public List<AgentConfiguration> roleConfigurations = new List<AgentConfiguration>();
+    [Header("Agent Prefabs")]
+    public GameObject workerPrefab;
+    public GameObject scoutPrefab;
+    public GameObject defenderPrefab;
 
     [Header("Spawn Settings")]
     public List<Transform> spawnPoints = new List<Transform>();
     public float spawnRadius = 2f;
-    public int agentsPerSpawnPoint = 3;
     public SpawnFormation formationType = SpawnFormation.Circle;
     public float gridSpacing = 2f;
     public Vector3 lineDirection = Vector3.forward;
@@ -54,15 +25,17 @@ public class SwarmIntelligence : MonoBehaviour
     [SerializeField] private List<Transform> _patrolPoints = new List<Transform>();
     public IReadOnlyList<Transform> PatrolPoints => _patrolPoints.AsReadOnly();
 
-    private List<GameObject> activeAgents = new List<GameObject>();
-    private Dictionary<Transform, GameObject> pointAssignments = new Dictionary<Transform, GameObject>();
+    private List<SwarmAgent> activeAgents = new List<SwarmAgent>();
+    private Dictionary<Transform, SwarmAgent> pointAssignments = new Dictionary<Transform, SwarmAgent>();
+    private bool isPlayerThreatActive = false;
+    private Vector3 lastThreatPosition;
 
     private void Awake()
     {
         if (Instance == null)
         {
             Instance = this;
-            InitializeDefaultConfigurations();
+            FindPlayer();
         }
         else
         {
@@ -70,35 +43,10 @@ public class SwarmIntelligence : MonoBehaviour
         }
     }
 
-    private void InitializeDefaultConfigurations()
+    private void FindPlayer()
     {
-        if (roleConfigurations.Count == 0)
-        {
-            roleConfigurations = new List<AgentConfiguration>
-            {
-                new AgentConfiguration {
-                    role = AgentRole.Worker,
-                    debugColor = Color.blue,
-                    speed = 3.5f,
-                    patrolRadius = 15f,
-                    visitRecencyWeight = 0.7f
-                },
-                new AgentConfiguration {
-                    role = AgentRole.Scout,
-                    debugColor = Color.green,
-                    speed = 5f,
-                    patrolRadius = 30f,
-                    randomnessFactor = 0.3f
-                },
-                new AgentConfiguration {
-                    role = AgentRole.Defender,
-                    debugColor = Color.red,
-                    speed = 4f,
-                    patrolRadius = 8f,
-                    avoidRecentlyVisited = false
-                }
-            };
-        }
+        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        if (player != null) playerTransform = player.transform;
     }
 
     private void Start()
@@ -107,82 +55,75 @@ public class SwarmIntelligence : MonoBehaviour
         SpawnAgentsUniformly();
     }
 
-    private void ValidatePointLists()
+    private void Update()
     {
-        // Remove null entries
-        _patrolPoints.RemoveAll(point => point == null);
-        spawnPoints.RemoveAll(point => point == null);
+        UpdateThreatStatus();
+    }
 
-        // Check for duplicates
-        foreach (var spawnPoint in spawnPoints)
+    private void UpdateThreatStatus()
+    {
+        bool threatDetected = false;
+        foreach (var agent in activeAgents)
         {
-            if (_patrolPoints.Contains(spawnPoint))
+            if (agent.CurrentState == AgentState.Chasing || agent.CurrentState == AgentState.Shooting)
             {
-                Debug.LogWarning($"Spawn point {spawnPoint.name} is also a patrol point", spawnPoint);
+                threatDetected = true;
+                lastThreatPosition = playerTransform != null ? playerTransform.position : agent.transform.position;
+                break;
             }
         }
+        isPlayerThreatActive = threatDetected;
     }
 
-    public void AddPatrolPoint(Transform point)
+    private void ValidatePointLists()
     {
-        if (!_patrolPoints.Contains(point))
-        {
-            _patrolPoints.Add(point);
-        }
-    }
-
-    public void RemovePatrolPoint(Transform point)
-    {
-        if (_patrolPoints.Contains(point))
-        {
-            _patrolPoints.Remove(point);
-            ReleasePoint(point);
-        }
-    }
-
-    public AgentConfiguration GetConfigForRole(AgentRole role)
-    {
-        return roleConfigurations.Find(c => c.role == role);
+        _patrolPoints.RemoveAll(point => point == null);
+        spawnPoints.RemoveAll(point => point == null);
     }
 
     private void SpawnAgentsUniformly()
     {
-        if (agentPrefab == null || spawnPoints.Count == 0) return;
+        if (spawnPoints.Count == 0) return;
 
         foreach (Transform spawnPoint in spawnPoints)
         {
-            for (int i = 0; i < agentsPerSpawnPoint; i++)
-            {
-                Vector3 spawnPos = GetSpawnPosition(spawnPoint.position, i, agentsPerSpawnPoint);
-                AgentRole role = (AgentRole)(i % 3);
-                SpawnAgentAtPosition(spawnPos, role, spawnPoint.position);
-            }
+            SpawnAgentAtPosition(GetSpawnPosition(spawnPoint.position, 0, 3), workerPrefab);
+            SpawnAgentAtPosition(GetSpawnPosition(spawnPoint.position, 1, 3), scoutPrefab);
+            SpawnAgentAtPosition(GetSpawnPosition(spawnPoint.position, 2, 3), defenderPrefab);
         }
     }
 
     private Vector3 GetSpawnPosition(Vector3 center, int index, int total)
     {
+        Vector3 position = Vector3.zero;
+
         switch (formationType)
         {
             case SpawnFormation.Grid:
                 int perRow = Mathf.CeilToInt(Mathf.Sqrt(total));
                 int row = index / perRow;
                 int col = index % perRow;
-                return GetNavMeshPosition(center + new Vector3(
+                position = center + new Vector3(
                     (col - perRow / 2f) * gridSpacing,
                     0,
-                    (row - perRow / 2f) * gridSpacing));
+                    (row - perRow / 2f) * gridSpacing);
+                break;
 
             case SpawnFormation.Line:
-                return GetNavMeshPosition(center + lineDirection.normalized * index * gridSpacing);
+                position = center + lineDirection.normalized * index * gridSpacing;
+                break;
 
             case SpawnFormation.Random:
-                return GetNavMeshPosition(center + Random.insideUnitSphere * spawnRadius);
+                position = center + Random.insideUnitSphere * spawnRadius;
+                break;
 
             default: // Circle
                 float angle = index * Mathf.PI * 2f / total;
-                return GetNavMeshPosition(center + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * spawnRadius);
+                position = center + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * spawnRadius;
+                break;
         }
+
+        return GetNavMeshPosition(position);
     }
 
     private Vector3 GetNavMeshPosition(Vector3 position)
@@ -195,56 +136,147 @@ public class SwarmIntelligence : MonoBehaviour
         return position;
     }
 
-    private void SpawnAgentAtPosition(Vector3 position, AgentRole role, Vector3 spawnPos)
+    private void SpawnAgentAtPosition(Vector3 position, GameObject prefab)
     {
-        GameObject agent = Instantiate(agentPrefab, position, Quaternion.identity);
-        var swarmAgent = agent.GetComponent<SwarmAgent>();
-        swarmAgent.Initialize(role, spawnPos);
+        if (prefab == null)
+        {
+            Debug.LogError("Missing agent prefab!");
+            return;
+        }
+
+        GameObject agentObj = Instantiate(prefab, position, Quaternion.identity);
+        SwarmAgent agent = agentObj.GetComponent<SwarmAgent>();
+
+        if (agent == null)
+        {
+            Debug.LogError("Prefab missing SwarmAgent component!", prefab);
+            return;
+        }
+
         activeAgents.Add(agent);
     }
 
-    public Transform GetRoleAppropriateDestination(AgentRole role, Vector3 currentPos, Vector3 spawnPos)
+    public Transform GetDestinationForAgent(SwarmAgent agent)
     {
         if (_patrolPoints.Count == 0) return null;
 
-        switch (role)
+        // If threat is active and agent is patrolling, respond to threat
+        if (isPlayerThreatActive && agent.CurrentState == AgentState.Patrolling)
+        {
+            float distanceToThreat = Vector3.Distance(agent.transform.position, lastThreatPosition);
+
+            if (Random.value < agent.threatResponseWeight ||
+                distanceToThreat < agent.detectionRadius * 0.5f)
+            {
+                if (distanceToThreat > agent.patrolRadius)
+                {
+                    return GetPointTowardThreat(agent.transform.position, lastThreatPosition);
+                }
+                else
+                {
+                    GameObject tempPoint = new GameObject("TempThreatPoint");
+                    tempPoint.transform.position = lastThreatPosition;
+                    return tempPoint.transform;
+                }
+            }
+        }
+
+        switch (agent.role)
         {
             case AgentRole.Worker:
-                return GetOptimalPatrolPoint(currentPos, spawnPos);
-
+                return GetOptimalPatrolPoint(agent);
             case AgentRole.Scout:
-                return GetFarthestPatrolPoint(currentPos, spawnPos);
-
+                return GetFarthestPatrolPoint(agent.transform.position);
             case AgentRole.Defender:
-                return GetDefenderDestination(currentPos, spawnPos);
-
+                return GetDefenderDestination(agent);
             default:
                 return GetRandomPatrolPoint();
         }
     }
 
-    private Transform GetOptimalPatrolPoint(Vector3 currentPos, Vector3 spawnPos)
+    private Transform GetOptimalPatrolPoint(SwarmAgent agent)
     {
-        AgentConfiguration config = GetConfigForRole(AgentRole.Worker);
         Transform bestPoint = null;
         float bestScore = -Mathf.Infinity;
 
         foreach (Transform point in _patrolPoints)
         {
-            // Skip if point is assigned to someone else
-            if (config.avoidRecentlyVisited && pointAssignments.ContainsKey(point))
-                continue;
-
-            // Skip if beyond patrol radius
-            if (Vector3.Distance(point.position, spawnPos) > config.patrolRadius)
-                continue;
+            if (pointAssignments.ContainsKey(point)) continue;
 
             PatrolPoint pp = point.GetComponent<PatrolPoint>();
             float timeSinceVisit = Time.time - pp.lastVisitTime;
-            float distanceScore = 1f / (1f + Vector3.Distance(currentPos, point.position));
+            float distanceScore = 1f / (1f + Vector3.Distance(agent.transform.position, point.position));
 
-            float score = (timeSinceVisit * config.visitRecencyWeight) +
-                         (distanceScore * (1f - config.visitRecencyWeight));
+            float score = (timeSinceVisit * agent.visitRecencyWeight) +
+                         (distanceScore * (1f - agent.visitRecencyWeight));
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestPoint = point;
+            }
+        }
+
+        if (bestPoint != null) pointAssignments[bestPoint] = agent;
+        return bestPoint ?? GetRandomPatrolPoint();
+    }
+
+    private Transform GetFarthestPatrolPoint(Vector3 currentPos)
+    {
+        Transform farthest = null;
+        float maxDistance = 0f;
+
+        foreach (Transform point in _patrolPoints)
+        {
+            float distance = Vector3.Distance(currentPos, point.position);
+            if (distance > maxDistance)
+            {
+                maxDistance = distance;
+                farthest = point;
+            }
+        }
+
+        return farthest ?? GetRandomPatrolPoint();
+    }
+
+    private Transform GetDefenderDestination(SwarmAgent agent)
+    {
+        List<Transform> validPoints = _patrolPoints.FindAll(p =>
+            Vector3.Distance(p.position, agent.transform.position) <= agent.patrolRadius);
+
+        if (validPoints.Count == 0) return GetRandomPatrolPoint();
+
+        Transform nearest = null;
+        float minDistance = Mathf.Infinity;
+
+        foreach (Transform point in validPoints)
+        {
+            float distance = Vector3.Distance(agent.transform.position, point.position);
+            if (distance < minDistance)
+            {
+                minDistance = distance;
+                nearest = point;
+            }
+        }
+
+        return nearest ?? validPoints[Random.Range(0, validPoints.Count)];
+    }
+
+    private Transform GetPointTowardThreat(Vector3 currentPos, Vector3 threatPos)
+    {
+        Vector3 direction = (threatPos - currentPos).normalized;
+        float searchRadius = Mathf.Min(Vector3.Distance(currentPos, threatPos), 10f);
+
+        Transform bestPoint = null;
+        float bestScore = -Mathf.Infinity;
+
+        foreach (Transform point in _patrolPoints)
+        {
+            Vector3 toPoint = point.position - currentPos;
+            float dot = Vector3.Dot(direction, toPoint.normalized);
+            float distance = toPoint.magnitude;
+
+            float score = dot * 0.7f + (1f / (1f + distance)) * 0.3f;
 
             if (score > bestScore)
             {
@@ -256,62 +288,75 @@ public class SwarmIntelligence : MonoBehaviour
         return bestPoint ?? GetRandomPatrolPoint();
     }
 
-    private Transform GetFarthestPatrolPoint(Vector3 currentPos, Vector3 spawnPos)
-    {
-        AgentConfiguration config = GetConfigForRole(AgentRole.Scout);
-        List<Transform> validPoints = _patrolPoints.FindAll(p =>
-            Vector3.Distance(p.position, spawnPos) <= config.patrolRadius);
-
-        if (validPoints.Count == 0) return GetRandomPatrolPoint();
-
-        Transform farthest = null;
-        float maxDistance = 0f;
-
-        foreach (Transform point in validPoints)
-        {
-            float distance = Vector3.Distance(currentPos, point.position);
-            if (distance > maxDistance)
-            {
-                maxDistance = distance;
-                farthest = point;
-            }
-        }
-
-        return farthest ?? validPoints[Random.Range(0, validPoints.Count)];
-    }
-
-    private Transform GetDefenderDestination(Vector3 currentPos, Vector3 spawnPos)
-    {
-        AgentConfiguration config = GetConfigForRole(AgentRole.Defender);
-        List<Transform> validPoints = _patrolPoints.FindAll(p =>
-            Vector3.Distance(p.position, spawnPos) <= config.patrolRadius);
-
-        if (validPoints.Count == 0) return GetRandomPatrolPoint();
-
-        // Find nearest valid point that isn't current destination
-        Transform nearest = null;
-        float minDistance = Mathf.Infinity;
-
-        foreach (Transform point in validPoints)
-        {
-            float distance = Vector3.Distance(currentPos, point.position);
-            if (distance < minDistance)
-            {
-                minDistance = distance;
-                nearest = point;
-            }
-        }
-
-        return nearest ?? validPoints[Random.Range(0, validPoints.Count)];
-    }
-
     public Transform GetRandomPatrolPoint()
     {
         if (_patrolPoints.Count == 0) return null;
         return _patrolPoints[Random.Range(0, _patrolPoints.Count)];
     }
 
-    public void AssignPoint(Transform point, GameObject agent)
+    public Transform FindHidingSpot(Vector3 fromPosition, Vector3 threatPosition)
+    {
+        Transform bestSpot = null;
+        float bestScore = -Mathf.Infinity;
+
+        foreach (Transform point in _patrolPoints)
+        {
+            Vector3 dirToThreat = threatPosition - point.position;
+            if (!Physics.Raycast(point.position, dirToThreat.normalized, dirToThreat.magnitude,
+                LayerMask.GetMask("Obstacles"))) // Use your obstacle layer
+            {
+                continue;
+            }
+
+            float distanceScore = 1f / (1f + Vector3.Distance(fromPosition, point.position));
+            float coverScore = Vector3.Dot(dirToThreat.normalized, (point.position - fromPosition).normalized);
+
+            float totalScore = distanceScore * 0.7f + coverScore * 0.3f;
+            if (totalScore > bestScore)
+            {
+                bestScore = totalScore;
+                bestSpot = point;
+            }
+        }
+
+        return bestSpot ?? GetRandomPatrolPoint();
+    }
+
+    public void RegisterAgent(SwarmAgent agent)
+    {
+        if (!activeAgents.Contains(agent))
+        {
+            activeAgents.Add(agent);
+        }
+    }
+
+    public void UnregisterAgent(SwarmAgent agent)
+    {
+        if (activeAgents.Contains(agent))
+        {
+            activeAgents.Remove(agent);
+            ReleaseAllPoints(agent);
+        }
+    }
+
+    private void ReleaseAllPoints(SwarmAgent agent)
+    {
+        List<Transform> toRemove = new List<Transform>();
+        foreach (var assignment in pointAssignments)
+        {
+            if (assignment.Value == agent)
+            {
+                toRemove.Add(assignment.Key);
+            }
+        }
+
+        foreach (var point in toRemove)
+        {
+            pointAssignments.Remove(point);
+        }
+    }
+
+    public void AssignPoint(Transform point, SwarmAgent agent)
     {
         if (pointAssignments.ContainsKey(point))
         {
@@ -331,14 +376,23 @@ public class SwarmIntelligence : MonoBehaviour
         }
     }
 
-    private void OnDrawGizmosSelected()
+    public void AddPatrolPoint(Transform point)
     {
-        Gizmos.color = Color.yellow;
-        foreach (Transform point in spawnPoints)
+        if (!_patrolPoints.Contains(point))
         {
-            if (point != null)
+            _patrolPoints.Add(point);
+        }
+    }
+
+    public void RemovePatrolPoint(Transform point)
+    {
+        if (_patrolPoints.Contains(point))
+        {
+            _patrolPoints.Remove(point);
+            // Also remove from point assignments if it exists there
+            if (pointAssignments.ContainsKey(point))
             {
-                Gizmos.DrawWireSphere(point.position, 0.5f);
+                pointAssignments.Remove(point);
             }
         }
     }

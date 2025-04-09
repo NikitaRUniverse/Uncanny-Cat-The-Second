@@ -1,5 +1,5 @@
-using System.Linq;
 using UnityEngine;
+using System.Linq;
 
 public class PatrolPoint : MonoBehaviour
 {
@@ -32,7 +32,8 @@ public class PatrolPoint : MonoBehaviour
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(transform.position, gizmoRadius);
 
-        if (SwarmIntelligence.Instance != null && SwarmIntelligence.Instance.PatrolPoints.Contains(transform))
+        if (SwarmIntelligence.Instance != null &&
+            SwarmIntelligence.Instance.PatrolPoints.Contains(transform))
         {
             Gizmos.DrawIcon(transform.position + Vector3.up * 1.5f, "PatrolPoint.png", true);
         }
