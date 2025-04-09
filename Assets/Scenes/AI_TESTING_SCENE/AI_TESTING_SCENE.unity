@@ -551,7 +551,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3120756885345462856, guid: 04e2d68a31aa6894399f299570ed1f26, type: 3}
       propertyPath: verticalRotationRange
-      value: 74.8
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7635649976458102896, guid: 04e2d68a31aa6894399f299570ed1f26, type: 3}
       propertyPath: m_Name
