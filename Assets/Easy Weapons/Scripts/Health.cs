@@ -17,6 +17,14 @@ public class Health : MonoBehaviour
 
     public void ChangeHealth(float amount)
     {
+
+        // Notify SwarmAgent if present
+        SwarmAgent agent = GetComponent<SwarmAgent>();
+        if (agent != null && amount < 0)
+        {
+            agent.ReceiveDamage(-amount); // Convert damage to positive
+        }
+
         currentHealth += amount;
 
         if (currentHealth <= 0)
@@ -28,12 +36,6 @@ public class Health : MonoBehaviour
             currentHealth = maxHealth;
         }
 
-        // Notify SwarmAgent if present
-        SwarmAgent agent = GetComponent<SwarmAgent>();
-        if (agent != null && amount < 0)
-        {
-            agent.ReceiveDamage(-amount); // Convert damage to positive
-        }
     }
 
     public void Die()
