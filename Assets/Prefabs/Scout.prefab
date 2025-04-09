@@ -245,6 +245,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   startingHealth: 1
   maxHealth: 1
+  explosion: {fileID: 4779799753371983175, guid: 054269ac80efa6a40a80841e46db9cfa, type: 3}
+  isPlayer: 0
+  deathCam: {fileID: 0}
 --- !u!1 &8675831191558315452
 GameObject:
   m_ObjectHideFlags: 0
