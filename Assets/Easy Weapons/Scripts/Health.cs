@@ -10,7 +10,10 @@ public class Health : MonoBehaviour
     public bool isPlayer = false;               // Whether or not this health is the player
     public bool isChild = false;
     public GameObject deathCam;					// The camera to activate when the player dies
-    public GameObject canvas;					// The camera to activate when the player dies
+    public GameObject canvas;					// The UI canvas to destroy when the player dies
+
+    private float lastHealthChangeTime = -Mathf.Infinity; // Track last time ChangeHealth was called
+    private float healthChangeCooldown = 0.1f;            // Cooldown duration in seconds
 
     private void Start()
     {
@@ -19,6 +22,12 @@ public class Health : MonoBehaviour
 
     public void ChangeHealth(float amount)
     {
+        if (Time.time - lastHealthChangeTime < healthChangeCooldown)
+        {
+            return; // Still in cooldown, so ignore the request
+        }
+
+        lastHealthChangeTime = Time.time; // Update the time of the last change
 
         // Notify SwarmAgent if present
         SwarmAgent agent = GetComponent<SwarmAgent>();
@@ -37,7 +46,6 @@ public class Health : MonoBehaviour
         {
             currentHealth = maxHealth;
         }
-
     }
 
     public void Die()
@@ -45,13 +53,13 @@ public class Health : MonoBehaviour
         if (isChild && deathCam != null)
             deathCam.SetActive(true);
 
-        if(!isChild)
+        if (!isChild)
         {
             GetComponent<MeshRenderer>().enabled = false;
             transform.GetChild(0).gameObject.SetActive(false);
         }
-        
-        if(isPlayer)
+
+        if (isPlayer)
         {
             Destroy(gameObject);
             Destroy(canvas);

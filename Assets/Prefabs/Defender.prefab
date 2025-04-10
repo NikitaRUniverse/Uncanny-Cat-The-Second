@@ -3040,11 +3040,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   role: 2
   debugColor: {r: 1, g: 0, b: 0, a: 1}
-  speed: 3.5
+  speed: 1.5
   stoppingDistance: 0.5
   rotationSpeed: 20
   detectionRadius: 5
-  fieldOfView: 90
+  fieldOfView: 75
   obstacleLayers:
     serializedVersion: 2
     m_Bits: 128
@@ -3052,9 +3052,9 @@ MonoBehaviour:
   visitRecencyWeight: 0.7
   threatResponseWeight: 0.5
   shootingRange: 5
-  maxFear: 100
+  maxFear: 150
   fearReductionRate: 5
-  fearDamageWeight: 1
+  fearDamageWeight: 2
   fearDistanceWeight: 0.5
   distanceInput:
     name: 
@@ -3087,7 +3087,25 @@ MonoBehaviour:
     name: 
     curve:
       serializedVersion: 2
-      m_Curve: []
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
@@ -3108,8 +3126,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 11e1876ddae4a1046b64b5dd5c293c0f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  startingHealth: 1
-  maxHealth: 1
+  startingHealth: 180
+  maxHealth: 180
   explosion: {fileID: 4779799753371983175, guid: 054269ac80efa6a40a80841e46db9cfa, type: 3}
   isPlayer: 0
   isChild: 0
